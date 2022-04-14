@@ -252,38 +252,59 @@ class config {
    */
   template <typename T>
   T dereference(const string& section, const string& key, const string& var) const {
-      // TODO: Use fallback if unsuccessful
-      string derefd = dereference_any(section, key, var);
-      // TODO: Note to self: Understand why `move` is necessary here
-      return convert<T>(move(derefd));
+    string derefd = dereference_any(section, key, var);
+    // TODO: Note to self: Understand why `move` is necessary here
+    return convert<T>(move(derefd));
   }
 
   /**
    * Dereference value reference without converting
    */
   string dereference_any(const string& section, const string& key, const string& var) const {
-    // Check if `var` contains a variable reference
+    /*
     if (var.substr(0, 2) != "${" || var.substr(var.length() - 1) != "}") {
-      // If not, just return `var` itself
-      return var;
+       return fallback;
     }
-    
-    // Strip of `${` and `}`
-    auto path = var.substr(2, var.length() - 3);
-    size_t pos;
+    */
+    // Check if var contains a variable reference (format is `${...}`)
+    size_t start = var.find("${");
+    size_t end = var.find("}", start + 1);
 
-    // Look up reference, depending on the kind of reference
-    if (path.compare(0, 4, "env:") == 0) {
-      return dereference_env(path.substr(4));
-    } else if (path.compare(0, 5, "xrdb:") == 0) {
-      return dereference_xrdb(path.substr(5));
-    } else if (path.compare(0, 5, "file:") == 0) {
-      return dereference_file(path.substr(5));
-    } else if ((pos = path.find(".")) != string::npos) {
-      return dereference_local(path.substr(0, pos), path.substr(pos + 1), section);
+    if (start == string::npos) {
+      // No variable reference found
+      return var;
+    } else if (end == string::npos) {
+      // Found start but not end -> missing closing `}`
+      throw value_error("Unclosed reference at \"" + section + "." + key + "\" (missing closing `}`)");
+    }
+
+    m_log.notice("found variable reference in `%s`", var);
+    m_log.notice("start: %d, end: %d", start, end);
+    // Substring of `var` that contains the variable reference; `${` and `}` are stripped out
+    string reference = var.substr(start + 2, end - start - 2);
+    m_log.notice("reference: %s", reference);
+
+    // Derefernce `reference`, store result in `result`
+    string result;
+    size_t pos;
+    if (reference.compare(0, 4, "env:") == 0) {
+      result = dereference_env(reference.substr(4));
+    } else if (reference.compare(0, 5, "xrdb:") == 0) {
+      result = dereference_xrdb(reference.substr(5));
+    } else if (reference.compare(0, 5, "file:") == 0) {
+      result = dereference_file(reference.substr(5));
+    } else if ((pos = reference.find(".")) != string::npos) {
+      result = dereference_local(reference.substr(0, pos), reference.substr(pos + 1), section);
     } else {
       throw value_error("Invalid reference defined at \"" + section + "." + key + "\"");
     }
+    m_log.notice("Result of reference lookup: %s", result);
+
+    // Replace variable reference with lookup result in `var`
+    string interpolated = var.substr(0, start) + result + var.substr(end + 1);
+    m_log.notice("Final interpolated result: %s", interpolated);
+
+    return interpolated;
   }
 
   /**
@@ -307,7 +328,7 @@ class config {
     try {
       // Try to look up the value that is being referenced
       string string_value{get<string>(section, key)};
-      
+
       // Use `string_value` itself as fallback that will be used
       // in case it doesn't contain a variable reference
       return dereference_any(string(section), move(key), string_value);
