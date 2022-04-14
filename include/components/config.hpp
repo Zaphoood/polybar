@@ -92,7 +92,7 @@ class config {
     if (it->second.find(key) == it->second.end()) {
       throw key_error("Missing parameter \"" + section + "." + key + "\"");
     }
-    return dereference<T>(section, key, it->second.at(key), convert<T>(string{it->second.at(key)}));
+    return dereference<T>(section, key, it->second.at(key));
   }
 
   /**
@@ -103,8 +103,7 @@ class config {
   T get(const string& section, const string& key, const T& default_value) const {
     try {
       string string_value{get<string>(section, key)};
-      T result{convert<T>(string{string_value})};
-      return dereference<T>(move(section), move(key), move(string_value), move(result));
+      return dereference<T>(move(section), move(key), move(string_value));
     } catch (const key_error& err) {
       return default_value;
     } catch (const std::exception& err) {
@@ -160,7 +159,7 @@ class config {
         T value{convert<T>(string{string_value})};
 
         if (!string_value.empty()) {
-          results.emplace_back(dereference<T>(section, key, move(string_value), move(value)));
+          results.emplace_back(dereference<T>(section, key, move(string_value)));
         } else {
           results.emplace_back(move(value));
         }
@@ -190,7 +189,7 @@ class config {
         T value{convert<T>(string{string_value})};
 
         if (!string_value.empty()) {
-          results.emplace_back(dereference<T>(section, key, move(string_value), move(value)));
+          results.emplace_back(dereference<T>(section, key, move(string_value)));
         } else {
           results.emplace_back(move(value));
         }
@@ -252,7 +251,7 @@ class config {
    * Dereference value reference and convert to type T
    */
   template <typename T>
-  T dereference(const string& section, const string& key, const string& var, const T& fallback) const {
+  T dereference(const string& section, const string& key, const string& var) const {
       // TODO: Use fallback if unsuccessful
       string derefd = dereference_any(section, key, var);
       // TODO: Note to self: Understand why `move` is necessary here
@@ -308,8 +307,6 @@ class config {
     try {
       // Try to look up the value that is being referenced
       string string_value{get<string>(section, key)};
-      // T result{convert<T>(string{string_value})};
-      // return dereference<T>(string(section), move(key), move(string_value), move(result));
       
       // Use `string_value` itself as fallback that will be used
       // in case it doesn't contain a variable reference
