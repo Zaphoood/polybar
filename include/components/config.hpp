@@ -249,25 +249,39 @@ class config {
   T convert(string&& value) const;
 
   /**
-   * Dereference value reference
+   * Dereference value reference and convert to type T
    */
   template <typename T>
   T dereference(const string& section, const string& key, const string& var, const T& fallback) const {
-    if (var.substr(0, 2) != "${" || var.substr(var.length() - 1) != "}") {
-      return fallback;
-    }
+      // TODO: Use fallback if unsuccessful
+      string derefd = dereference_any(section, key, var);
+      // TODO: Note to self: Understand why `move` is necessary here
+      return convert<T>(move(derefd));
+  }
 
+  /**
+   * Dereference value reference without converting
+   */
+  string dereference_any(const string& section, const string& key, const string& var) const {
+    // Check if `var` contains a variable reference
+    if (var.substr(0, 2) != "${" || var.substr(var.length() - 1) != "}") {
+      // If not, just return `var` itself
+      return var;
+    }
+    
+    // Strip of `${` and `}`
     auto path = var.substr(2, var.length() - 3);
     size_t pos;
 
+    // Look up reference, depending on the kind of reference
     if (path.compare(0, 4, "env:") == 0) {
-      return dereference_env<T>(path.substr(4));
+      return dereference_env(path.substr(4));
     } else if (path.compare(0, 5, "xrdb:") == 0) {
-      return dereference_xrdb<T>(path.substr(5));
+      return dereference_xrdb(path.substr(5));
     } else if (path.compare(0, 5, "file:") == 0) {
-      return dereference_file<T>(path.substr(5));
+      return dereference_file(path.substr(5));
     } else if ((pos = path.find(".")) != string::npos) {
-      return dereference_local<T>(path.substr(0, pos), path.substr(pos + 1), section);
+      return dereference_local(path.substr(0, pos), path.substr(pos + 1), section);
     } else {
       throw value_error("Invalid reference defined at \"" + section + "." + key + "\"");
     }
@@ -282,8 +296,7 @@ class config {
    *  ${section.key}
    *  ${section.key:fallback}
    */
-  template <typename T>
-  T dereference_local(string section, const string& key, const string& current_section) const {
+  string dereference_local(string section, const string& key, const string& current_section) const {
     if (section == "BAR") {
       m_log.warn("${BAR.key} is deprecated. Use ${root.key} instead");
     }
@@ -293,16 +306,21 @@ class config {
     section = string_util::replace(section, "self", current_section, 0, 4);
 
     try {
+      // Try to look up the value that is being referenced
       string string_value{get<string>(section, key)};
-      T result{convert<T>(string{string_value})};
-      return dereference<T>(string(section), move(key), move(string_value), move(result));
+      // T result{convert<T>(string{string_value})};
+      // return dereference<T>(string(section), move(key), move(string_value), move(result));
+      
+      // Use `string_value` itself as fallback that will be used
+      // in case it doesn't contain a variable reference
+      return dereference_any(string(section), move(key), string_value);
     } catch (const key_error& err) {
       size_t pos;
       if ((pos = key.find(':')) != string::npos) {
         string fallback = key.substr(pos + 1);
         m_log.info("The reference ${%s.%s} does not exist, using defined fallback value \"%s\"", section,
             key.substr(0, pos), fallback);
-        return convert<T>(move(fallback));
+        return fallback;
       }
       throw value_error("The reference ${" + section + "." + key + "} does not exist (no fallback set)");
     }
@@ -313,8 +331,7 @@ class config {
    *  ${env:key}
    *  ${env:key:fallback value}
    */
-  template <typename T>
-  T dereference_env(string var) const {
+  string dereference_env(string var) const {
     size_t pos;
     string env_default;
     /*
@@ -332,10 +349,10 @@ class config {
     if (env_util::has(var)) {
       string env_value{env_util::get(var)};
       m_log.info("Environment var reference ${%s} found (value=%s)", var, env_value);
-      return convert<T>(move(env_value));
+      return env_value;
     } else if (has_default) {
       m_log.info("Environment var ${%s} is undefined, using defined fallback value \"%s\"", var, env_default);
-      return convert<T>(move(env_default));
+      return env_default;
     } else {
       throw value_error(sstream() << "Environment var ${" << var << "} does not exist (no fallback set)");
     }
@@ -346,15 +363,14 @@ class config {
    *  ${xrdb:key}
    *  ${xrdb:key:fallback value}
    */
-  template <typename T>
-  T dereference_xrdb(string var) const {
+  string dereference_xrdb(string var) const {
     size_t pos;
 #if not WITH_XRM
     m_log.warn("No built-in support to dereference ${xrdb:%s} references (requires `xcb-util-xrm`)", var);
     if ((pos = var.find(':')) != string::npos) {
-      return convert<T>(var.substr(pos + 1));
+      return var.substr(pos + 1);
     }
-    return convert<T>("");
+    return "";
 #else
     if (!m_xrm) {
       throw application_error("xrm is not initialized");
@@ -371,11 +387,11 @@ class config {
     try {
       auto value = m_xrm->require<string>(var.c_str());
       m_log.info("Found matching X resource \"%s\" (value=%s)", var, value);
-      return convert<T>(move(value));
+      return value;
     } catch (const xresource_error& err) {
       if (has_fallback) {
         m_log.info("%s, using defined fallback value \"%s\"", err.what(), fallback);
-        return convert<T>(move(fallback));
+        return fallback;
       }
       throw value_error(sstream() << err.what() << " (no fallback set)");
     }
@@ -387,8 +403,7 @@ class config {
    *  ${file:/absolute/file/path}
    *  ${file:/absolute/file/path:fallback value}
    */
-  template <typename T>
-  T dereference_file(string var) const {
+  string dereference_file(string var) const {
     size_t pos;
     string fallback;
     bool has_fallback = false;
@@ -401,10 +416,10 @@ class config {
 
     if (file_util::exists(var)) {
       m_log.info("File reference \"%s\" found", var);
-      return convert<T>(string_util::trim(file_util::contents(var), '\n'));
+      return string_util::trim(file_util::contents(var), '\n');
     } else if (has_fallback) {
       m_log.info("File reference \"%s\" not found, using defined fallback value \"%s\"", var, fallback);
-      return convert<T>(move(fallback));
+      return fallback;
     } else {
       throw value_error(sstream() << "The file \"" << var << "\" does not exist (no fallback set)");
     }
