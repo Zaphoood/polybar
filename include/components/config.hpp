@@ -85,6 +85,14 @@ class config {
    */
   template <typename T = string>
   T get(const string& section, const string& key) const {
+    return dereference<T>(section, key, get_literal(section, key));
+  }
+
+  /**
+   * Get literal value of a variable by section and parameter name
+   * as a string without dereferencing it
+   */
+  string get_literal(const string& section, const string& key) const {
     auto it = m_sections.find(section);
     if (it == m_sections.end()) {
       throw key_error("Missing section \"" + section + "\"");
@@ -92,7 +100,8 @@ class config {
     if (it->second.find(key) == it->second.end()) {
       throw key_error("Missing parameter \"" + section + "." + key + "\"");
     }
-    return dereference<T>(section, key, it->second.at(key));
+    
+    return it->second.at(key);
   }
 
   /**
@@ -324,8 +333,7 @@ class config {
 
     try {
       // Try to look up the value that is being referenced
-      m_log.notice("deref_local: call to get<string>");
-      string string_value{get<string>(section, key)};
+      string string_value{get_literal(section, key)};
 
       m_log.notice("deref_local: call to deref-string(%s, %s)", section, key);
       return dereference_string(string(section), move(key), string_value);
