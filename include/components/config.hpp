@@ -261,7 +261,6 @@ class config {
    */
   template <typename T>
   T dereference(const string& section, const string& key, const string& var) const {
-    m_log.notice("deref(%s, %s, %s)", section, key, var);
     return convert<T>(dereference_string(section, key, var));
   }
 
@@ -269,29 +268,21 @@ class config {
    * Dereference value reference as a string
    */
   string dereference_string(const string& section, const string& key, const string& var) const {
-    m_log.notice("deref_str(%s, %s, %s)", section, key, var);
     string result;
     size_t start = 0, end = 0;
     while (true) {
-        // TODO: Allow escaping references, so that for example a literal '${}` is possible
-        // Check if var contains a variable reference (format is `${...}`)
-        start = var.find("${", end);
-        if (start == string::npos) {
+        if ((start = var.find("${", end)) != string::npos) {
           break;
         }
         // Note that here `end` points to either the beginning of the string or
-        // the first character after the last reference, so its position is before `start`!
+        // the first character after the last variable reference, so its position is before `start`
         result += var.substr(end, start - end);
 
-        end = var.find("}", start + 1);
-        if (end == string::npos) {
+        if ((end = var.find("}", start + 2)) == string::npos) {
           throw value_error("Unclosed reference at \"" + section + "." + key + "\" (missing closing `}`)");
         }
 
-        // Strip out `${` and `}`
         string reference = var.substr(start + 2, end - start - 2);
-
-        // Store result of dereferencing `reference` in `dereferenced`
         string dereferenced;
         size_t pos;
         if (reference.compare(0, 4, "env:") == 0) {
@@ -301,7 +292,6 @@ class config {
         } else if (reference.compare(0, 5, "file:") == 0) {
           dereferenced = dereference_file(reference.substr(5));
         } else if ((pos = reference.find(".")) != string::npos) {
-          m_log.notice("deref_str: call to deref_local");
           dereferenced = dereference_local(reference.substr(0, pos), reference.substr(pos + 1), section);
         } else {
           throw value_error("Invalid reference defined at \"" + section + "." + key + "\"");
@@ -309,7 +299,7 @@ class config {
         result += dereferenced;
         end++;
       }
-    // Append remaining substring of `var` after last variable reference
+    
     return result + var.substr(end);
   }
 
@@ -335,7 +325,6 @@ class config {
       // Try to look up the value that is being referenced
       string string_value{get_literal(section, key)};
 
-      m_log.notice("deref_local: call to deref-string(%s, %s)", section, key);
       return dereference_string(string(section), move(key), string_value);
     } catch (const key_error& err) {
       size_t pos;
