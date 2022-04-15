@@ -270,15 +270,26 @@ class config {
   string dereference_string(const string& section, const string& key, const string& var) const {
     string result;
     size_t start = 0, end = 0;
-    while (true) {
-        if ((start = var.find("${", end)) != string::npos) {
+    while (end < var.length()) {
+        if ((start = var.find("$", end)) == string::npos) {
           break;
+        }
+        if (start > 0 && var.at(start - 1) == '\\') {
+            // Escaped '\$'; append '$' and continue
+            result += '$';
+            end = start + 1;
+            continue;
+        } else if (start == var.length() - 1 || var.at(start + 1) != '{') {
+            // Single '$' which has no special meaning
+            result += '$';
+            end = start + 1;
+            continue;
         }
         // Note that here `end` points to either the beginning of the string or
         // the first character after the last variable reference, so its position is before `start`
         result += var.substr(end, start - end);
 
-        if ((end = var.find("}", start + 2)) == string::npos) {
+        if ((end = var.find('}', start + 2)) == string::npos) {
           throw value_error("Unclosed reference at \"" + section + "." + key + "\" (missing closing `}`)");
         }
 

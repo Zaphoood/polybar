@@ -317,7 +317,8 @@ string config_parser::parse_escaped_value(const line_t& line, string&& value, co
   bool log = false;
   auto backslash_pos = value.find('\\');
   while (backslash_pos != string::npos) {
-    if (backslash_pos == value.size() - 1 || value[backslash_pos + 1] != '\\') {
+    if (backslash_pos == value.size() - 1 ||
+        (value[backslash_pos + 1] != '\\' && value[backslash_pos + 1] != '$')) {
       log = true;
     } else {
       value = value.replace(backslash_pos, 2, "\\");
