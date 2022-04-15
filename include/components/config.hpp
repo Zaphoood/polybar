@@ -252,6 +252,7 @@ class config {
    */
   template <typename T>
   T dereference(const string& section, const string& key, const string& var) const {
+    m_log.notice("deref(%s, %s, %s)", section, key, var);
     return convert<T>(dereference_string(section, key, var));
   }
 
@@ -259,6 +260,7 @@ class config {
    * Dereference value reference as a string
    */
   string dereference_string(const string& section, const string& key, const string& var) const {
+    m_log.notice("deref_str(%s, %s, %s)", section, key, var);
     string result;
     size_t start = 0, end = 0;
     while (true) {
@@ -290,6 +292,7 @@ class config {
         } else if (reference.compare(0, 5, "file:") == 0) {
           dereferenced = dereference_file(reference.substr(5));
         } else if ((pos = reference.find(".")) != string::npos) {
+          m_log.notice("deref_str: call to deref_local");
           dereferenced = dereference_local(reference.substr(0, pos), reference.substr(pos + 1), section);
         } else {
           throw value_error("Invalid reference defined at \"" + section + "." + key + "\"");
@@ -321,10 +324,10 @@ class config {
 
     try {
       // Try to look up the value that is being referenced
+      m_log.notice("deref_local: call to get<string>");
       string string_value{get<string>(section, key)};
 
-      // Use `string_value` itself as fallback that will be used
-      // in case it doesn't contain a variable reference
+      m_log.notice("deref_local: call to deref-string(%s, %s)", section, key);
       return dereference_string(string(section), move(key), string_value);
     } catch (const key_error& err) {
       size_t pos;
